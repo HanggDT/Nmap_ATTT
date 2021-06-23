@@ -1,0 +1,67 @@
+Cờ TCP RST có nghĩa là để chỉ ra rằng kết nối phải được chấm dứt ngay lập tức nếu chưa kết thúc, 
+chủ yếu là do lỗi nghiêm trọng. Nếu bên nhận được RST muốn tiếp tục trao đổi thông tin với bên gửi RST
+thì phải bắt đâu lại quy trình bắt tay 3 bước không thì kết nối kết thúc.
+-------------------------------------------------
+khác nhau giữa cổng đóng và cổng đã lọc gói tin gửi đến là:
+	+cổng đóng thì gửi lại phản hổi gói tin SYN bằng gói tin RST
+	+cổng bị lọc sẽ k phản ứng lại gói tin SYN, hết thời gian đếm ngược thì nmap gửi lại SYN nếu vẫn k đc phản
+hồi thì thì có khả năng cao là do gói tin SYN bị lọc do tường lửa hoặc các biện pháp bảo vệ khác
+
+-------------------------------------------------------------------------------------------------------------------------------
+Scan xem trong mạng local có những host nào còn sống: 
+	Có nhiều cách để làm việc này.
+ví dụ: ICMP scan: nmap -sP -PE [target]
+Đơn giản là Nmap sẽ gửi đến địa chỉ broatcast gói tin ICMP Echo(ICMP là 1 giao thức ở network layer), 
+những host còn sống có thể nhận được và phản hổi lại từ đó sác định được IP của tất cả những host còn
+ sống trên local.
+
+-------------------------------------------------------------
+Scan by TCP connect scan: nmap -sT [Target] 
+	-Nmap sẽ gửi gói tin SYN đến tất cả các cổng của máy mục tiêu(target) nếu mục tiêu là 1
+IP cụ thể, còn nếu là mạng local thì đầu tiên Nmap dò xem trong local có những host nào
+còn sống rồi Nmap gửi gói tin SYN đến tất cả các host đó. Nếu cổng nào sử dụng TCP protocol
+thì có 2 trường hợp:
+		+cổng mở thì sẽ gửi lại gói tin SYN+ACK . tiếp theo Nmap gửi tiếp gói ACK để hoàn thành kết nối
+		+cổng đóng thì gửi lại gói tin RST để yêu cầu thiết lập lại kết nối.
+---------------------------------------------------------------
+Scan by UDP: nmap -sU [Target]: mục đích kiểm tra xem cổng có đóng không.
+		 + Nmap gửi đến các cổng gói UDP, nếu nhận lại được phản hồi ICMP thông báo lỗi có nghĩa cổng đóng.
+		nếu k nhận đc phản hồi thì cổng mở hoặc đã bị lọc.
+	
+-------------------------------------------------------------
+TCP scan: 
+	-SYN scan(nmap -sS [target]): cách hoạt động giống TCP connect scan nhưng khác ở chỗ là khi cổng mở thì
+sau khi nhận đc SYN+ACK từ Target thì nmap gửi đi RST để kết thúc kết nối.
+	-ACK scan(nmap -sA [target]): k xác định được cổng đóng hay mở. Chỉ dùng trong việc xác định quy tắc 
+làm việc của tườngg lửa. nmap gửi đi gói tin ACK. 
+				     .Nếu nhận được: RST=> gói tin k bị lọc
+				     .nếu k nhận dc phản hồi hoặc nhận được gói ICMP thông báo lỗi thì bị lọc
+	
+
+--------------------------------------------------------------------
+Zombie scan: nmap -sI [IP zombie] [IP target]
+	-Scan bằng cách gửi các gói tin thông qua IP của zombie đến IP của target, làm cho khi bị phát hiện thì 
+IP nguồn trên các gói tin là IP của zombie. Mục đích là che giấu Ip của người Scan thực sự.
+	-Cách hoạt động: đầu tiên phải xác định được Zombie con sống
+		+Nmap gửi gói SYN+ACk đến IP zombie, Zombie nhận đc SYN+ACk sẽ gửi lại RST(vì SYN+ACK là gói k 
+xác định đối với Zombie) 
+		+Nmap  nhận đc RST từ Zombie sẽ lấy đc thông tin trường ID-IP và ghi nhớ giá trị ID-IP.
+		+Nmap tạo gói tin SYN giả với IP là IP của Zombie tới cho mục tiêu.
+		+Mục tiêu nhận đc SYN thì xảy ra 3 trường hợp:
+			.Open port:target gửi gói SYN+ACK đến cho zombie,zombie nhận được gói k xác định nên sẽ 
+				gửi lại RST => ID IP của zombie tăng lên 1.Tiếp theo Nmap gửi SYN+ACK đến Zombie,
+				zombie nhận đc gói k xác định nên gửi lại RST, Nmap phân tích ID IP vừa nhận được
+				rồi so sánh với ID IP đã lưu lại trước đó và thấy ID IP tăng lên 2 nên Nmap xác 
+				định được cổng đó của Target mở
+			.Close port:Target sẽ gửi lại gói tin RST cho Zombie. Tiếp theo Nmap gửi lại SYN+ACK cho 
+				Zombie. Zombie gửi RST cho Nmap. Nmap phân tích thấy ID IP của Zombie tăng lên 1 
+				nên Nmap xác định cổng đó của Target là đóng hoặc gói tin đã bị lọc do các bộ bảo
+				vệ trên thiết bị đó ví dụ như Firewall.
+			.Filter port:Target sẽ k phản hồi gói tin đó vì đã bị lọc. Tiếp theo iếp theo Nmap gửi lại SYN+ACK cho 
+				Zombie. Zombie gửi RST cho Nmap. Nmap phân tích thấy ID IP của Zombie tăng lên 1 
+				nên Nmap xác định cổng đó của Target là đóng hoặc gói tin đã bị lọc.
+
+	*NOTE: phương pháp này chỉ hiệu quả tương đối bởi vì trong quá trình Nmap thực hiện thì Zombie cũng có thể
+		đang tương tác với một nguồn khác nên ID IP được xác định là k tuyệt đối.
+  				
+
